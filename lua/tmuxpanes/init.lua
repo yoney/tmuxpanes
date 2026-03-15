@@ -30,6 +30,7 @@ M.panes = {}
 M.last_used_pane = nil
 M.last_used_pane_display = nil
 M._commands_created = false
+M._draft_editor_hint_shown = false
 
 -- Get current tmux session
 local function get_tmux_session()
@@ -99,7 +100,7 @@ end
 -- Send keys to a specific tmux pane using literal mode (-l flag)
 function M.send_to_pane(target, text)
   if not text or text == "" then
-    return
+    return false
   end
 
   -- Use argv form so pane ids like %1 and literal text avoid shell quoting issues.
@@ -107,19 +108,28 @@ function M.send_to_pane(target, text)
 
   if vim.v.shell_error ~= 0 then
     vim.notify("Failed to send to pane: " .. target, vim.log.levels.ERROR)
+    return false
   else
     vim.notify("Sent to " .. target, vim.log.levels.INFO)
+    return true
   end
 end
 
 -- Send keys with Enter key
 function M.send_to_pane_with_enter(target, text)
   if not text or text == "" then
-    return
+    return false
   end
-  M.send_to_pane(target, text)
+  if not M.send_to_pane(target, text) then
+    return false
+  end
   -- Send Enter key
   vim.fn.system({ "tmux", "send-keys", "-t", target, "Enter" })
+  if vim.v.shell_error ~= 0 then
+    vim.notify("Failed to send Enter to pane: " .. target, vim.log.levels.ERROR)
+    return false
+  end
+  return true
 end
 
 -- Get current line (for normal mode)
@@ -548,6 +558,118 @@ function M.send_command()
   end)
 end
 
+function M.open_send_editor(opts)
+  opts = opts or {}
+  local initial_text = opts.text or M.get_context_payload()
+  if not initial_text or initial_text == "" then
+    vim.notify("No text to edit", vim.log.levels.WARN)
+    return
+  end
+
+  local source_filetype = vim.bo.filetype
+  local buf = vim.api.nvim_create_buf(false, true)
+  local lines = vim.split(initial_text, "\n", { plain = true })
+  local width = math.min(math.max(math.floor(vim.o.columns * 0.7), 60), vim.o.columns - 4)
+  local height = math.min(math.max(math.floor(vim.o.lines * 0.5), 8), vim.o.lines - 6)
+  local win = vim.api.nvim_open_win(buf, true, {
+    relative = "editor",
+    style = "minimal",
+    border = "rounded",
+    width = width,
+    height = height,
+    row = math.floor((vim.o.lines - height) / 2) - 1,
+    col = math.floor((vim.o.columns - width) / 2),
+  })
+
+  vim.bo[buf].bufhidden = "wipe"
+  vim.bo[buf].swapfile = false
+  vim.bo[buf].modifiable = true
+  vim.bo[buf].filetype = source_filetype
+  vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
+
+  local function close_editor()
+    if vim.api.nvim_win_is_valid(win) then
+      vim.api.nvim_win_close(win, true)
+    end
+  end
+
+  local function get_payload()
+    local payload = table.concat(vim.api.nvim_buf_get_lines(buf, 0, -1, false), "\n")
+    if payload == "" then
+      vim.notify("No text to send", vim.log.levels.WARN)
+      return nil
+    end
+    return payload
+  end
+
+  local function send_to_selected(send_enter)
+    local payload = get_payload()
+    if not payload then
+      return
+    end
+
+    M.select_pane(function(pane)
+      local ok
+      if send_enter then
+        ok = M.send_to_pane_with_enter(pane.target, payload)
+      else
+        ok = M.send_to_pane(pane.target, payload)
+      end
+      if ok then
+        close_editor()
+      end
+    end, {
+      prompt = "Select tmux pane to send text:",
+    })
+  end
+
+  local function send_to_last(send_enter)
+    local payload = get_payload()
+    if not payload then
+      return
+    end
+    if not M.last_used_pane then
+      vim.notify(
+        "No last pane used. Select one first with <leader>tt or <leader>ts",
+        vim.log.levels.WARN
+      )
+      return
+    end
+
+    if M.send_to_last_pane({ text = payload, send_enter = send_enter }) then
+      close_editor()
+    end
+  end
+
+  local map_opts = { buffer = buf, nowait = true, silent = true }
+  vim.keymap.set({ "n", "i" }, "<C-s>", function()
+    send_to_selected(false)
+  end, map_opts)
+  vim.keymap.set({ "n", "i" }, "<C-e>", function()
+    send_to_selected(true)
+  end, map_opts)
+  vim.keymap.set({ "n", "i" }, "<C-r>", function()
+    send_to_last(false)
+  end, map_opts)
+  vim.keymap.set({ "n", "i" }, "<C-t>", function()
+    send_to_last(true)
+  end, map_opts)
+  vim.keymap.set("n", "q", function()
+    close_editor()
+  end, map_opts)
+
+  if not M._draft_editor_hint_shown then
+    vim.notify(
+      "Draft editor: <C-s> send, <C-e> send+Enter, <C-r> last pane, <C-t> last pane+Enter, q close",
+      vim.log.levels.INFO
+    )
+    M._draft_editor_hint_shown = true
+  end
+  local last_line = math.max(vim.api.nvim_buf_line_count(buf), 1)
+  local last_col = #(vim.api.nvim_buf_get_lines(buf, last_line - 1, last_line, false)[1] or "")
+  vim.api.nvim_win_set_cursor(win, { last_line, last_col })
+end
+
 -- Quick send to last used pane
 function M.send_to_last_pane(opts)
   opts = opts or {}
@@ -555,7 +677,7 @@ function M.send_to_last_pane(opts)
 
   if not text or text == "" then
     vim.notify("No text to send", vim.log.levels.WARN)
-    return
+    return false
   end
 
   if not M.last_used_pane then
@@ -563,13 +685,13 @@ function M.send_to_last_pane(opts)
       "No last pane used. Select one first with <leader>tt or <leader>ts",
       vim.log.levels.WARN
     )
-    return
+    return false
   end
 
   if opts.send_enter then
-    M.send_to_pane_with_enter(M.last_used_pane, text)
+    return M.send_to_pane_with_enter(M.last_used_pane, text)
   else
-    M.send_to_pane(M.last_used_pane, text)
+    return M.send_to_pane(M.last_used_pane, text)
   end
 end
 
@@ -612,6 +734,10 @@ function M.create_commands()
   vim.api.nvim_create_user_command("TmuxPaneSendVisual", function()
     M.select_pane_and_send({ text = M.get_selection_payload_from_marks(), send_enter = true })
   end, { range = true, desc = "Send visual selection to tmux pane" })
+
+  vim.api.nvim_create_user_command("TmuxPaneEdit", function()
+    M.open_send_editor({ text = M.get_context_payload() })
+  end, { desc = "Open editable draft for tmux send" })
 
   vim.api.nvim_create_user_command("TmuxPaneLast", function()
     M.show_last_pane()
@@ -683,6 +809,18 @@ function M.setup(opts)
     vim.keymap.set("n", prefix .. "c", function()
       M.send_command()
     end, { desc = "Send command to tmux pane" })
+
+    vim.keymap.set("n", prefix .. "e", function()
+      M.open_send_editor({ text = M.get_current_line_payload() })
+    end, { desc = "Edit current line before sending" })
+
+    vim.keymap.set("v", prefix .. "e", function()
+      local esc = vim.api.nvim_replace_termcodes("<Esc>", true, false, true)
+      vim.api.nvim_feedkeys(esc, "nx", false)
+      vim.schedule(function()
+        M.open_send_editor({ text = M.get_selection_payload_from_marks() })
+      end)
+    end, { desc = "Edit selection before sending" })
 
     vim.keymap.set("n", prefix .. "r", function()
       M.send_to_last_pane({ text = M.get_current_line_payload() })

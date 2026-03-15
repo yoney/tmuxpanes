@@ -73,6 +73,7 @@ require("tmuxpanes").setup({
 | `<leader>ts` | Normal/Visual | Send current line/selection to selected pane |
 | `<leader>tS` | Normal/Visual | Send current line/selection with Enter |
 | `<leader>tc` | Normal | Send a typed command to pane |
+| `<leader>te` | Normal/Visual | Open editable draft before sending |
 | `<leader>tr` | Normal/Visual | Send to last saved pane |
 | `<leader>tR` | Normal/Visual | Send to last saved pane with Enter |
 | `<leader>tp` | Normal | Show which pane is saved as last used |
@@ -87,6 +88,7 @@ require("tmuxpanes").setup({
 | `:TmuxPaneSend <text>` | Send text to a selected pane |
 | `:TmuxPaneSendLine` | Send current line to a pane |
 | `:'<,'>TmuxPaneSendVisual` | Send visual selection to a pane |
+| `:TmuxPaneEdit` | Open an editable draft from the current line or active selection |
 | `:TmuxPaneLast` | Show the last used pane |
 | `:TmuxPaneRepeat` | Send current line to the last used pane |
 | `:TmuxPaneRepeatEnter` | Send current line to the last used pane with Enter |
@@ -95,8 +97,10 @@ require("tmuxpanes").setup({
 
 - `<leader>tt` uses `session_scope`; `<leader>ta` forces all sessions and `<leader>tl` limits to the current session.
 - `<leader>ts` and `<leader>tr` send text only; `<leader>tS` and `<leader>tR` also press Enter.
+- `<leader>te` opens a floating draft editor so you can edit the payload before sending it.
 - Line and visual sends prepend `path:line` or `path:start-end` when `include_location = true`.
 - `location_path = "absolute"` and `session_scope = "all"` are the defaults.
+- In the draft editor, use `<C-s>` to send, `<C-e>` to send with Enter, `<C-r>` to send to the last pane, `<C-t>` to send to the last pane with Enter, and `q` to close.
 
 ### Telescope Extension
 
@@ -140,6 +144,11 @@ local visual_payload = tmuxpanes.get_selection_payload_from_marks()
 tmuxpanes.select_pane_and_send({
   text = "echo hello",
   send_enter = true
+})
+
+-- Open an editable floating draft before sending
+tmuxpanes.open_send_editor({
+  text = tmuxpanes.get_context_payload()
 })
 
 -- Send to last used pane
