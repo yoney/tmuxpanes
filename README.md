@@ -1,6 +1,6 @@
 # tmuxpanes.nvim
 
-A Neovim plugin for sending text from Neovim to a coding agent running in another tmux pane.
+A Neovim plugin for sending text from Neovim to another tmux pane.
 
 Repository: <https://github.com/yoney/tmuxpanes>
 

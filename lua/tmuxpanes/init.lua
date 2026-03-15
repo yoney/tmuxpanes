@@ -761,6 +761,11 @@ end
 
 -- Setup function
 function M.setup(opts)
+  if vim.fn.has("nvim-0.7") == 0 then
+    vim.notify("tmuxpanes.nvim requires Neovim 0.7+", vim.log.levels.ERROR)
+    return
+  end
+
   M.config = vim.tbl_deep_extend("force", M.config, opts or {})
 
   -- Create commands
