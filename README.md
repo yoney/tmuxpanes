@@ -98,7 +98,8 @@ require("tmuxpanes").setup({
 - `<leader>tt` uses `session_scope`; `<leader>ta` forces all sessions and `<leader>tl` limits to the current session.
 - `<leader>ts` and `<leader>tr` send text only; `<leader>tS` and `<leader>tR` also press Enter.
 - `<leader>te` opens a floating draft editor so you can edit the payload before sending it.
-- Line and visual sends prepend `path:line` or `path:start-end` when `include_location = true`.
+- Line and visual sends prepend `path:line` or `path:start-end` when `include_location = true`; unnamed buffers send raw text without a fake path prefix.
+- If the current buffer has unsaved changes, the location line is prefixed with `[modified]` so the receiver does not assume disk content matches exactly.
 - `location_path = "absolute"` and `session_scope = "all"` are the defaults.
 - In the draft editor, use `<C-s>` to send, `<C-e>` to send with Enter, `<C-r>` to send to the last pane, `<C-t>` to send to the last pane with Enter, and `q` to close.
 

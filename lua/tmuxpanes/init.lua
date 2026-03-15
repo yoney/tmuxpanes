@@ -140,7 +140,7 @@ end
 local function get_buffer_path()
   local absolute_path = vim.fn.expand("%:p")
   if absolute_path == "" then
-    return "[No Name]"
+    return nil
   end
 
   if M.config.location_path == "cwd_relative" then
@@ -167,11 +167,18 @@ function M.format_text_with_location(text, start_line, end_line)
   end
 
   local path = get_buffer_path()
+  if not path or path == "" then
+    return text
+  end
   local location
   if end_line and end_line ~= start_line then
     location = string.format("%s:%d-%d", path, start_line, end_line)
   else
     location = string.format("%s:%d", path, start_line)
+  end
+
+  if vim.bo.modified then
+    location = "[modified] " .. location
   end
 
   return string.format("%s\n%s", location, text)
