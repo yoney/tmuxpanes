@@ -37,7 +37,7 @@ require("tmuxpanes").setup({
   picker_mapping = "<leader>tt",
 
   -- Session scope for pane pickers: "all" or "current"
-  session_scope = "all",
+  session_scope = "current",
 
   -- Whether to include current pane in the list
   include_current = false,
@@ -100,7 +100,7 @@ require("tmuxpanes").setup({
 - `<leader>te` opens a floating draft editor so you can edit the payload before sending it.
 - Line and visual sends prepend `path:line` or `path:start-end` when `include_location = true`; unnamed buffers send raw text without a fake path prefix.
 - If the current buffer has unsaved changes, the location line is prefixed with `[modified]` so the receiver does not assume disk content matches exactly.
-- `location_path = "absolute"` and `session_scope = "all"` are the defaults.
+- `location_path = "absolute"` and `session_scope = "current"` are the defaults.
 - In the draft editor, use `<C-s>` to send and `<C-e>` to send with Enter. If a last pane is saved, `<C-r>` resends there and `<C-t>` resends there with Enter.
 
 ### Telescope Extension

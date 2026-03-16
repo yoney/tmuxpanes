@@ -10,7 +10,7 @@ M.config = {
   -- Optional direct picker mapping. Set to false to disable.
   picker_mapping = "<leader>tt",
   -- Session scope for pane pickers: "all" or "current"
-  session_scope = "all",
+  session_scope = "current",
   -- Whether to include current pane in the list
   include_current = false,
   -- Format for pane display: [#{session_name}] #{window_name}:#{pane_index} - #{pane_current_command}
