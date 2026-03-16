@@ -30,7 +30,15 @@ M.panes = {}
 M.last_used_pane = nil
 M.last_used_pane_display = nil
 M._commands_created = false
-M._draft_editor_hint_shown = false
+
+function M.check_version()
+  if vim.fn.has("nvim-0.9") == 1 then
+    return true
+  end
+
+  vim.notify("tmuxpanes.nvim requires Neovim 0.9+", vim.log.levels.ERROR)
+  return false
+end
 
 -- Get current tmux session
 local function get_tmux_session()
@@ -575,18 +583,29 @@ function M.open_send_editor(opts)
 
   local source_filetype = vim.bo.filetype
   local buf = vim.api.nvim_create_buf(false, true)
+  local hint_text
+  if M.last_used_pane then
+    hint_text = "[tmuxpanes] <C-s> send | <C-e> send+Enter | <C-r> last | <C-t> last+Enter"
+  else
+    hint_text = "[tmuxpanes] <C-s> send | <C-e> send+Enter | no last pane yet"
+  end
   local lines = vim.split(initial_text, "\n", { plain = true })
   local width = math.min(math.max(math.floor(vim.o.columns * 0.7), 60), vim.o.columns - 4)
   local height = math.min(math.max(math.floor(vim.o.lines * 0.5), 8), vim.o.lines - 6)
-  local win = vim.api.nvim_open_win(buf, true, {
+  local row = math.floor((vim.o.lines - height) / 2) - 1
+  local col = math.floor((vim.o.columns - width) / 2)
+  local win_opts = {
     relative = "editor",
     style = "minimal",
     border = "rounded",
     width = width,
     height = height,
-    row = math.floor((vim.o.lines - height) / 2) - 1,
-    col = math.floor((vim.o.columns - width) / 2),
-  })
+    row = row,
+    col = col,
+  }
+  win_opts.title = hint_text
+  win_opts.title_pos = "center"
+  local win = vim.api.nvim_open_win(buf, true, win_opts)
 
   vim.bo[buf].bufhidden = "wipe"
   vim.bo[buf].swapfile = false
@@ -661,17 +680,10 @@ function M.open_send_editor(opts)
   vim.keymap.set({ "n", "i" }, "<C-t>", function()
     send_to_last(true)
   end, map_opts)
-  vim.keymap.set("n", "q", function()
+  vim.keymap.set("n", "<Esc>", function()
     close_editor()
   end, map_opts)
 
-  if not M._draft_editor_hint_shown then
-    vim.notify(
-      "Draft editor: <C-s> send, <C-e> send+Enter, <C-r> last pane, <C-t> last pane+Enter, q close",
-      vim.log.levels.INFO
-    )
-    M._draft_editor_hint_shown = true
-  end
   local last_line = math.max(vim.api.nvim_buf_line_count(buf), 1)
   local last_col = #(vim.api.nvim_buf_get_lines(buf, last_line - 1, last_line, false)[1] or "")
   vim.api.nvim_win_set_cursor(win, { last_line, last_col })
@@ -761,8 +773,7 @@ end
 
 -- Setup function
 function M.setup(opts)
-  if vim.fn.has("nvim-0.7") == 0 then
-    vim.notify("tmuxpanes.nvim requires Neovim 0.7+", vim.log.levels.ERROR)
+  if not M.check_version() then
     return
   end
 

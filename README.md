@@ -6,7 +6,7 @@ Repository: <https://github.com/yoney/tmuxpanes>
 
 ## Requirements
 
-- Neovim >= 0.7.0
+- Neovim >= 0.9.0
 - tmux (must be running inside a tmux session)
 
 ## Installation

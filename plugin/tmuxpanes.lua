@@ -6,11 +6,11 @@ if vim.g.loaded_tmuxpanes then
 end
 vim.g.loaded_tmuxpanes = 1
 
-if vim.fn.has("nvim-0.7") == 0 then
-  vim.notify("tmuxpanes.nvim requires Neovim 0.7+", vim.log.levels.ERROR)
+local tmuxpanes = require("tmuxpanes")
+
+if not tmuxpanes.check_version() then
   return
 end
 
 -- Create commands immediately (can be called before setup)
-local tmuxpanes = require("tmuxpanes")
 tmuxpanes.create_commands()
