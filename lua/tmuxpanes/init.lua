@@ -19,6 +19,10 @@ M.config = {
   selector = "auto",
   -- Number of lines to show in Telescope pane previews
   preview_lines = 120,
+  -- Floating draft editor width. Fractions use the editor size, integers are absolute columns.
+  editor_width = 0.7,
+  -- Floating draft editor height. Fractions use the editor size, integers are absolute rows.
+  editor_height = 0.5,
   -- Prepend buffer path and line range to line/selection sends
   include_location = true,
   -- Path style for location prefixes: "absolute", "git_relative", or "cwd_relative"
@@ -31,24 +35,35 @@ M.last_used_pane = nil
 M.last_used_pane_display = nil
 M._commands_created = false
 
+local function trim_trailing_whitespace(text)
+  return (text or ""):gsub("%s+$", "")
+end
+
+local function system_capture(cmd)
+  local result = vim.system(cmd, { text = true }):wait()
+  if result.code ~= 0 then
+    return nil, result
+  end
+
+  return trim_trailing_whitespace(result.stdout), result
+end
+
+local function tmux_capture(args)
+  return system_capture(vim.list_extend({ "tmux" }, args))
+end
+
 function M.check_version()
-  if vim.fn.has("nvim-0.9") == 1 then
+  if vim.fn.has("nvim-0.10") == 1 then
     return true
   end
 
-  vim.notify("tmuxpanes.nvim requires Neovim 0.9+", vim.log.levels.ERROR)
+  vim.notify("tmuxpanes.nvim requires Neovim 0.10+", vim.log.levels.ERROR)
   return false
 end
 
 -- Get current tmux session
 local function get_tmux_session()
-  local handle = io.popen("tmux display-message -p '#S' 2>/dev/null")
-  if not handle then
-    return nil
-  end
-  local result = handle:read("*a")
-  handle:close()
-  return result and result:gsub("%s+$", "")
+  return tmux_capture({ "display-message", "-p", "#S" })
 end
 
 -- Check if running inside tmux
@@ -65,30 +80,28 @@ function M.list_panes(scope)
 
   scope = scope or M.config.session_scope or "all"
 
-  local cmd = string.format(
-    "tmux list-panes -a -F '%s\t%s' 2>/dev/null",
-    M.config.format,
-    "#{session_name}:#{window_index}.#{pane_index}"
-  )
-
-  local handle = io.popen(cmd)
-  if not handle then
+  local output = tmux_capture({
+    "list-panes",
+    "-a",
+    "-F",
+    string.format("%s\t%s", M.config.format, "#{session_name}:#{window_index}.#{pane_index}"),
+  })
+  if not output then
     vim.notify("Failed to list tmux panes", vim.log.levels.ERROR)
     return {}
   end
 
   local panes = {}
   local current_session = get_tmux_session()
-  local current_pane = vim.fn.system("tmux display-message -p '#{pane_id}'"):gsub("%s+$", "")
+  local current_pane = tmux_capture({ "display-message", "-p", "#{pane_id}" }) or ""
 
-  for line in handle:lines() do
+  for _, line in ipairs(vim.split(output, "\n", { plain = true, trimempty = true })) do
     local display, target = line:match("^(.-)\t(.+)$")
     if display and target then
       local session_name = target:match("^([^:]+)")
       -- Filter to the requested session scope, and optionally exclude current pane.
       if scope == "all" or session_name == current_session then
-        local pane_id =
-          vim.fn.system("tmux display-message -t " .. target .. " -p '#{pane_id}'"):gsub("%s+$", "")
+        local pane_id = tmux_capture({ "display-message", "-t", target, "-p", "#{pane_id}" }) or ""
         if M.config.include_current or pane_id ~= current_pane then
           table.insert(panes, {
             display = display,
@@ -99,10 +112,35 @@ function M.list_panes(scope)
       end
     end
   end
-  handle:close()
 
   M.panes = panes
   return panes
+end
+
+local function get_picker_display(pane, index)
+  local prefix = ""
+  if pane.pane_id and pane.pane_id == M.last_used_pane then
+    prefix = "[last] "
+  end
+
+  if index then
+    return string.format("%d. %s%s", index, prefix, pane.display)
+  end
+
+  return prefix .. pane.display
+end
+
+local function resolve_editor_dimension(value, total, min_size, padding)
+  if type(value) ~= "number" then
+    value = min_size
+  end
+
+  local max_size = math.max(total - padding, min_size)
+  if value > 0 and value <= 1 then
+    return math.min(math.max(math.floor(total * value), min_size), max_size)
+  end
+
+  return math.min(math.max(math.floor(value), min_size), max_size)
 end
 
 -- Send keys to a specific tmux pane using literal mode (-l flag)
@@ -111,10 +149,16 @@ function M.send_to_pane(target, text)
     return false
   end
 
-  -- Use argv form so pane ids like %1 and literal text avoid shell quoting issues.
-  vim.fn.system({ "tmux", "send-keys", "-t", target, "-l", "--", text })
+  local ok_utils, tmux_utils = pcall(require, "tmuxpanes.utils")
+  if ok_utils and not tmux_utils.pane_exists(target) then
+    vim.notify("Pane does not exist: " .. target, vim.log.levels.ERROR)
+    return false
+  end
 
-  if vim.v.shell_error ~= 0 then
+  local result = vim
+    .system({ "tmux", "send-keys", "-t", target, "-l", "--", text }, { text = true })
+    :wait()
+  if result.code ~= 0 then
     vim.notify("Failed to send to pane: " .. target, vim.log.levels.ERROR)
     return false
   else
@@ -132,8 +176,8 @@ function M.send_to_pane_with_enter(target, text)
     return false
   end
   -- Send Enter key
-  vim.fn.system({ "tmux", "send-keys", "-t", target, "Enter" })
-  if vim.v.shell_error ~= 0 then
+  local result = vim.system({ "tmux", "send-keys", "-t", target, "Enter" }, { text = true }):wait()
+  if result.code ~= 0 then
     vim.notify("Failed to send Enter to pane: " .. target, vim.log.levels.ERROR)
     return false
   end
@@ -156,8 +200,8 @@ local function get_buffer_path()
   end
 
   if M.config.location_path == "git_relative" then
-    local git_root = vim.fn.systemlist({ "git", "rev-parse", "--show-toplevel" })[1]
-    if vim.v.shell_error == 0 and git_root and git_root ~= "" then
+    local git_root = system_capture({ "git", "rev-parse", "--show-toplevel" })
+    if git_root and git_root ~= "" then
       local escaped_root = vim.pesc(git_root .. "/")
       local relative_path = absolute_path:gsub("^" .. escaped_root, "")
       if relative_path ~= absolute_path then
@@ -378,8 +422,8 @@ function M.open_telescope_picker(opts)
     entries[#entries + 1] = {
       index = index,
       pane = pane,
-      display = string.format("%d. %s", index, pane.display),
-      ordinal = string.format("%d %s", index, pane.display),
+      display = get_picker_display(pane, index),
+      ordinal = string.format("%d %s", index, get_picker_display(pane)),
       target = pane.target,
     }
   end
@@ -521,7 +565,7 @@ function M.select_pane(callback, opts)
     vim.ui.select(panes, {
       prompt = opts.prompt or "Select tmux pane:",
       format_item = function(item)
-        return item.display
+        return get_picker_display(item)
       end,
     }, on_choice)
     return
@@ -529,7 +573,7 @@ function M.select_pane(callback, opts)
 
   local lines = { opts.prompt or "Select tmux pane:" }
   for index, pane in ipairs(panes) do
-    lines[#lines + 1] = string.format("%d. %s", index, pane.display)
+    lines[#lines + 1] = get_picker_display(pane, index)
   end
 
   local choice_index = vim.fn.inputlist(lines)
@@ -590,8 +634,8 @@ function M.open_send_editor(opts)
     hint_text = "[tmuxpanes] <C-s> send | <C-e> send+Enter | no last pane yet"
   end
   local lines = vim.split(initial_text, "\n", { plain = true })
-  local width = math.min(math.max(math.floor(vim.o.columns * 0.7), 60), vim.o.columns - 4)
-  local height = math.min(math.max(math.floor(vim.o.lines * 0.5), 8), vim.o.lines - 6)
+  local width = resolve_editor_dimension(M.config.editor_width, vim.o.columns, 60, 4)
+  local height = resolve_editor_dimension(M.config.editor_height, vim.o.lines, 8, 6)
   local row = math.floor((vim.o.lines - height) / 2) - 1
   local col = math.floor((vim.o.columns - width) / 2)
   local win_opts = {

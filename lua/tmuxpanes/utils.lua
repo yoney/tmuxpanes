@@ -3,29 +3,40 @@
 
 local M = {}
 
+local function trim_trailing_whitespace(text)
+  return (text or ""):gsub("%s+$", "")
+end
+
+local function run_tmux(args)
+  local result = vim.system(vim.list_extend({ "tmux" }, args), { text = true }):wait()
+  if result.code ~= 0 then
+    return nil, result
+  end
+
+  return trim_trailing_whitespace(result.stdout), result
+end
+
 -- Execute a tmux command and return the output
 function M.tmux_cmd(command)
-  local cmd = "tmux " .. command .. " 2>/dev/null"
-  local handle = io.popen(cmd)
-  if not handle then
+  if type(command) == "table" then
+    return run_tmux(command)
+  end
+
+  local result = vim
+    .system({ "sh", "-c", "tmux " .. command .. " 2>/dev/null" }, { text = true })
+    :wait()
+  if result.code ~= 0 then
     return nil
   end
-  local result = handle:read("*a")
-  local ok = handle:close()
-  if not ok then
-    return nil
-  end
-  if not result then
-    return ""
-  end
-  return (result:gsub("%s+$", ""))
+
+  return trim_trailing_whitespace(result.stdout)
 end
 
 -- Get detailed info about a specific pane
 function M.get_pane_info(target)
   local format =
     "#{pane_id}\t#{pane_pid}\t#{pane_start_command}\t#{pane_current_command}\t#{pane_current_path}\t#{pane_active}\t#{pane_dead}"
-  local output = M.tmux_cmd("display-message -t " .. target .. " -p '" .. format .. "'")
+  local output = M.tmux_cmd({ "display-message", "-t", target, "-p", format })
 
   if not output then
     return nil
@@ -46,28 +57,27 @@ end
 
 -- Check if a pane exists
 function M.pane_exists(target)
-  return M.tmux_cmd("display-message -t " .. target .. " -p '#{pane_id}'") ~= nil
+  return M.tmux_cmd({ "display-message", "-t", target, "-p", "#{pane_id}" }) ~= nil
 end
 
 -- Get pane by pattern (find pane running a specific command)
 function M.find_pane_by_command(pattern)
-  local cmd = string.format(
-    "tmux list-panes -a -F '#{session_name}:#{window_index}.#{pane_index}\t#{pane_current_command}' 2>/dev/null"
-  )
-
-  local handle = io.popen(cmd)
-  if not handle then
+  local output = M.tmux_cmd({
+    "list-panes",
+    "-a",
+    "-F",
+    "#{session_name}:#{window_index}.#{pane_index}\t#{pane_current_command}",
+  })
+  if not output then
     return nil
   end
 
-  for line in handle:lines() do
+  for _, line in ipairs(vim.split(output, "\n", { plain = true, trimempty = true })) do
     local target, command = line:match("^(.-)\t(.+)$")
     if target and command and command:match(pattern) then
-      handle:close()
       return target
     end
   end
-  handle:close()
 
   return nil
 end
@@ -75,36 +85,33 @@ end
 -- Capture pane output
 function M.capture_pane(target, lines)
   lines = lines or 100
-  local output = M.tmux_cmd("capture-pane -t " .. target .. " -p -S -" .. lines)
+  local output = M.tmux_cmd({ "capture-pane", "-t", target, "-p", "-S", "-" .. lines })
   return output
 end
 
 -- Resize pane
 function M.resize_pane(target, direction, amount)
   amount = amount or 10
-  local resize_cmd = "resize-pane -t " .. target .. " "
-
   if direction == "up" then
-    resize_cmd = resize_cmd .. "-U " .. amount
+    return M.tmux_cmd({ "resize-pane", "-t", target, "-U", tostring(amount) })
   elseif direction == "down" then
-    resize_cmd = resize_cmd .. "-D " .. amount
+    return M.tmux_cmd({ "resize-pane", "-t", target, "-D", tostring(amount) })
   elseif direction == "left" then
-    resize_cmd = resize_cmd .. "-L " .. amount
+    return M.tmux_cmd({ "resize-pane", "-t", target, "-L", tostring(amount) })
   elseif direction == "right" then
-    resize_cmd = resize_cmd .. "-R " .. amount
+    return M.tmux_cmd({ "resize-pane", "-t", target, "-R", tostring(amount) })
   end
-
-  return M.tmux_cmd(resize_cmd)
+  return nil
 end
 
 -- Zoom pane (toggle)
 function M.zoom_pane(target)
-  return M.tmux_cmd("resize-pane -t " .. target .. " -Z")
+  return M.tmux_cmd({ "resize-pane", "-t", target, "-Z" })
 end
 
 -- Send control character (e.g., Ctrl+C)
 function M.send_control(target, char)
-  vim.fn.system({ "tmux", "send-keys", "-t", target, "C-" .. char })
+  vim.system({ "tmux", "send-keys", "-t", target, "C-" .. char }, { text = true }):wait()
 end
 
 -- Send special key
@@ -129,7 +136,7 @@ function M.send_key(target, key)
   }
 
   local mapped_key = key_map[key:lower()] or key
-  vim.fn.system({ "tmux", "send-keys", "-t", target, mapped_key })
+  vim.system({ "tmux", "send-keys", "-t", target, mapped_key }, { text = true }):wait()
 end
 
 -- Clear pane (send Ctrl+L or 'clear' command)
@@ -155,12 +162,13 @@ end
 
 -- Get all windows in current session
 function M.list_windows()
-  local session = M.tmux_cmd("display-message -p '#S'")
+  local session = M.tmux_cmd({ "display-message", "-p", "#S" })
   if not session then
     return {}
   end
 
-  local output = M.tmux_cmd("list-windows -t " .. session .. " -F '#{window_index}:#{window_name}'")
+  local output =
+    M.tmux_cmd({ "list-windows", "-t", session, "-F", "#{window_index}:#{window_name}" })
   if not output then
     return {}
   end

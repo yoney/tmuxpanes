@@ -6,7 +6,7 @@ Repository: <https://github.com/yoney/tmuxpanes>
 
 ## Requirements
 
-- Neovim >= 0.9.0
+- Neovim >= 0.10.0
 - tmux (must be running inside a tmux session)
 
 ## Installation
@@ -53,6 +53,10 @@ require("tmuxpanes").setup({
   -- Number of pane lines shown in Telescope preview windows
   preview_lines = 120,
 
+  -- Floating draft editor size. Fractions are relative to the editor.
+  editor_width = 0.7,
+  editor_height = 0.5,
+
   -- Prepend path and line number to line/selection sends
   include_location = true,
 
@@ -98,6 +102,7 @@ require("tmuxpanes").setup({
 - `<leader>tt` uses `session_scope`; `<leader>ta` forces all sessions and `<leader>tl` limits to the current session.
 - `<leader>ts` and `<leader>tr` send text only; `<leader>tS` and `<leader>tR` also press Enter.
 - `<leader>te` opens a floating draft editor so you can edit the payload before sending it.
+- The saved last pane is marked as `[last]` in pane pickers.
 - Line and visual sends prepend `path:line` or `path:start-end` when `include_location = true`; unnamed buffers send raw text without a fake path prefix.
 - If the current buffer has unsaved changes, the location line is prefixed with `[modified]` so the receiver does not assume disk content matches exactly.
 - `location_path = "absolute"` and `session_scope = "current"` are the defaults.
