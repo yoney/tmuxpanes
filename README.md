@@ -47,7 +47,7 @@ require("tmuxpanes").setup({
   format = "[#{session_name}] #{window_name}:#{pane_index} - #{pane_current_command}",
 
   -- Picker backend: "auto", "telescope", "ui", or "inputlist"
-  -- "auto" prefers Telescope when installed, then falls back.
+  -- "auto" prefers Telescope when installed, then falls back to the built-in floating picker.
   selector = "auto",
 
   -- Number of pane lines shown in Telescope preview windows
@@ -113,6 +113,8 @@ require("tmuxpanes").setup({
 If you have `telescope.nvim` installed, the default picker will use it automatically when `selector = "auto"` or `selector = "telescope"`.
 The preview window shows a snapshot of the highlighted tmux pane using `tmux capture-pane`.
 Entries are numbered, and the Telescope keybindings (`<C-s>`, `<C-e>`, `<C-x>`) work in both the default picker and the dedicated extension.
+
+Without Telescope, `selector = "ui"` uses the plugin's built-in floating picker. Use `selector = "inputlist"` if you want the numbered command-line picker explicitly.
 
 You can also use the dedicated extension directly:
 

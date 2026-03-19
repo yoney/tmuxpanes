@@ -26,6 +26,6 @@ Set the `SELECTOR` environment variable:
 # Test with inputlist (command-line numbered list)
 SELECTOR=inputlist nvim --clean -u test/minimal.lua
 
-# Test with ui (vim.ui.select clean fallback, shows built-in floating picker)
+# Test with ui (built-in floating picker fallback)
 SELECTOR=ui nvim --clean -u test/minimal.lua
 ```

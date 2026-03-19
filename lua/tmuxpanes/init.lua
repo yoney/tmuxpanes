@@ -143,6 +143,73 @@ local function resolve_editor_dimension(value, total, min_size, padding)
   return math.min(math.max(math.floor(value), min_size), max_size)
 end
 
+function M.open_floating_picker(opts)
+  opts = opts or {}
+  local panes = opts.panes or {}
+  if #panes == 0 then
+    return false
+  end
+
+  local width = math.min(math.max(math.floor(vim.o.columns * 0.6), 50), vim.o.columns - 4)
+  local height = math.min(math.max(#panes, 1), math.max(vim.o.lines - 6, 1))
+  local row = math.max(math.floor((vim.o.lines - height) / 2) - 1, 0)
+  local col = math.max(math.floor((vim.o.columns - width) / 2), 0)
+
+  local buf = vim.api.nvim_create_buf(false, true)
+  local win = vim.api.nvim_open_win(buf, true, {
+    relative = "editor",
+    style = "minimal",
+    border = "rounded",
+    width = width,
+    height = height,
+    row = row,
+    col = col,
+    title = opts.prompt or "Select tmux pane:",
+    title_pos = "center",
+  })
+
+  local lines = {}
+  for index, pane in ipairs(panes) do
+    lines[index] = get_picker_display(pane, index)
+  end
+
+  vim.bo[buf].bufhidden = "wipe"
+  vim.bo[buf].swapfile = false
+  vim.bo[buf].buftype = "nofile"
+  vim.bo[buf].modifiable = true
+  vim.bo[buf].filetype = "tmuxpanes-picker"
+  vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
+  vim.bo[buf].modifiable = false
+
+  local function close_picker()
+    if vim.api.nvim_win_is_valid(win) then
+      vim.api.nvim_win_close(win, true)
+    end
+  end
+
+  local function select_current()
+    local cursor = vim.api.nvim_win_get_cursor(win)
+    local index = cursor[1]
+    local choice = panes[index]
+    close_picker()
+    if choice and opts.on_select then
+      opts.on_select(choice, index)
+    end
+  end
+
+  local map_opts = { buffer = buf, nowait = true, silent = true }
+  vim.keymap.set("n", "<CR>", select_current, map_opts)
+  vim.keymap.set("n", "q", close_picker, map_opts)
+  vim.keymap.set("n", "<Esc>", close_picker, map_opts)
+  vim.keymap.set("n", "j", "j", map_opts)
+  vim.keymap.set("n", "k", "k", map_opts)
+  vim.keymap.set("n", "<Down>", "<Down>", map_opts)
+  vim.keymap.set("n", "<Up>", "<Up>", map_opts)
+
+  vim.api.nvim_win_set_cursor(win, { 1, 0 })
+  return true
+end
+
 -- Send keys to a specific tmux pane using literal mode (-l flag)
 function M.send_to_pane(target, text)
   if not text or text == "" then
@@ -562,13 +629,15 @@ function M.select_pane(callback, opts)
   end
 
   if M.config.selector == "ui" or M.config.selector == "auto" then
-    vim.ui.select(panes, {
-      prompt = opts.prompt or "Select tmux pane:",
-      format_item = function(item)
-        return get_picker_display(item)
-      end,
-    }, on_choice)
-    return
+    if
+      M.open_floating_picker({
+        panes = panes,
+        prompt = opts.prompt,
+        on_select = on_choice,
+      })
+    then
+      return
+    end
   end
 
   local lines = { opts.prompt or "Select tmux pane:" }
