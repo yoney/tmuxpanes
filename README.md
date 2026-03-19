@@ -4,6 +4,10 @@ A Neovim plugin for sending text from Neovim to another tmux pane.
 
 Repository: <https://github.com/yoney/tmuxpanes>
 
+## Demo
+
+![tmuxpanes demo](.github/assets/demo.gif)
+
 ## Requirements
 
 - Neovim >= 0.10.0
