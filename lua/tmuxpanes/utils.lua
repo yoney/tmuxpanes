@@ -60,6 +60,20 @@ function M.pane_exists(target)
   return M.tmux_cmd({ "display-message", "-t", target, "-p", "#{pane_id}" }) ~= nil
 end
 
+-- Check if a pane is in copy-mode or any other tmux mode.
+-- While a pane is in a mode, send-keys is consumed by that mode's key table
+-- instead of reaching the program running in the pane.
+function M.pane_in_mode(target)
+  return M.tmux_cmd({ "display-message", "-t", target, "-p", "#{pane_in_mode}" }) == "1"
+end
+
+-- Leave copy-mode (or any other mode) so send-keys reaches the running program.
+-- Despite the name, "copy-mode -q" cancels every mode rather than entering one,
+-- and is a no-op when the pane is not in a mode.
+function M.exit_pane_mode(target)
+  return M.tmux_cmd({ "copy-mode", "-q", "-t", target }) ~= nil
+end
+
 -- Get pane by pattern (find pane running a specific command)
 function M.find_pane_by_command(pattern)
   local output = M.tmux_cmd({

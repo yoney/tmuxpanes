@@ -66,6 +66,10 @@ require("tmuxpanes").setup({
 
   -- Path style for location prefixes: "absolute", "git_relative", or "cwd_relative"
   location_path = "absolute",
+
+  -- Leave copy-mode in the target pane before sending. Set to false to refuse
+  -- the send instead, preserving that pane's scroll position.
+  exit_pane_mode = true,
 })
 ```
 
@@ -110,6 +114,10 @@ require("tmuxpanes").setup({
 - Line and visual sends prepend `path:line` or `path:start-end` when `include_location = true`; unnamed buffers send raw text without a fake path prefix.
 - If the current buffer has unsaved changes, the location line is prefixed with `[modified]` so the receiver does not assume disk content matches exactly.
 - `location_path = "absolute"` and `session_scope = "current"` are the defaults.
+- If the target pane is scrolled back in copy-mode, tmux would feed the text to copy-mode's key
+  table instead of the running program (a payload starting with `/` would open copy-mode's search
+  prompt). With `exit_pane_mode = true` the pane leaves copy-mode first, which also returns it to
+  the bottom of its scrollback. With `exit_pane_mode = false` the send is refused with an error.
 - In the draft editor, use `<C-s>` to send and `<C-e>` to send with Enter. If a last pane is saved, `<C-r>` resends there and `<C-t>` resends there with Enter.
 
 ### Telescope Extension

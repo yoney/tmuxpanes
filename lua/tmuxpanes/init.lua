@@ -27,6 +27,9 @@ M.config = {
   include_location = true,
   -- Path style for location prefixes: "absolute", "git_relative", or "cwd_relative"
   location_path = "absolute",
+  -- Leave copy-mode in the target pane before sending, so the text reaches the
+  -- running program instead of the mode's key table. Costs the pane's scroll position.
+  exit_pane_mode = true,
 }
 
 -- Store panes list for the session
@@ -217,9 +220,24 @@ function M.send_to_pane(target, text)
   end
 
   local ok_utils, tmux_utils = pcall(require, "tmuxpanes.utils")
-  if ok_utils and not tmux_utils.pane_exists(target) then
-    vim.notify("Pane does not exist: " .. target, vim.log.levels.ERROR)
-    return false
+  if ok_utils then
+    if not tmux_utils.pane_exists(target) then
+      vim.notify("Pane does not exist: " .. target, vim.log.levels.ERROR)
+      return false
+    end
+
+    -- A pane in copy-mode swallows send-keys, and tmux still exits 0, so the
+    -- send looks successful while the text never reaches the program.
+    if tmux_utils.pane_in_mode(target) then
+      if not M.config.exit_pane_mode then
+        vim.notify(
+          "Pane is in copy-mode, text would be swallowed: " .. target,
+          vim.log.levels.ERROR
+        )
+        return false
+      end
+      tmux_utils.exit_pane_mode(target)
+    end
   end
 
   local result = vim
